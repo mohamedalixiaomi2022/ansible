@@ -1,0 +1,51 @@
+---
+- name: Provision LAMP + MariaDB (optional components)
+  hosts: all
+  become: true
+
+  vars:
+    # Control which components to install
+    install_apache: true
+    install_php: true
+    install_mariadb: true
+
+    # Default php version (can override per-inventory)
+    php_version: "8.2"
+    php_handler: "fpm"   # "fpm" or "mod_php"
+
+    # Default mariadb install options
+    mariadb_version: "12.3"
+    mariadb_data_dir: "/srv/mysql"
+    mariadb_bind_address: "127.0.0.1"
+    mariadb_secure_hardening: true
+    mariadb_databases: []
+    mariadb_users: []
+
+  vars_prompt:
+    - name: "mariadb_root_password"
+      prompt: "MariaDB root password (leave blank if not installing or using socket auth)"
+      private: yes
+      default: ""
+
+  roles:
+    - role: apache
+      when: install_apache
+      vars:
+        apache_install: "{{ install_apache }}"
+
+    - role: php
+      when: install_php
+      vars:
+        php_install: "{{ install_php }}"
+        php_version: "{{ php_version }}"
+        php_handler: "{{ php_handler }}"
+
+    - role: mariadb
+      when: install_mariadb
+      vars:
+        mariadb_install: "{{ mariadb_install | default(install_mariadb) }}"
+        mariadb_version: "{{ mariadb_version }}"
+        mariadb_data_dir: "{{ mariadb_data_dir }}"
+        mariadb_root_password: "{{ mariadb_root_password }}"
+        mariadb_bind_address: "{{ mariadb_bind_address }}"
+        mariadb_secure_hardening: "{{ mariadb_secure_hardening }}"

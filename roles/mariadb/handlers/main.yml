@@ -1,0 +1,9 @@
+---
+- name: restart mariadb
+  service:
+    name: mariadb
+    state: restarted
+
+- name: reload apparmor
+  command: systemctl reload apparmor
+  ignore_errors: yes

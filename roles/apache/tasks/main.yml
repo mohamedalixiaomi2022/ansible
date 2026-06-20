@@ -1,0 +1,58 @@
+---
+- name: "Skip apache role when not requested"
+  meta: end_play
+  when: not apache_install
+
+- name: Install apache package
+  apt:
+    name: "{{ apache_pkg }}"
+    state: present
+    update_cache: yes
+
+- name: Ensure required apache modules are enabled
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - apache2-utils
+    - ssl
+  notify: restart apache
+
+- name: Deploy apache security configuration (use custom if provided)
+  block:
+    - name: Use custom apache security conf if set
+      copy:
+        src: "{{ apache_custom_security_conf }}"
+        dest: /etc/apache2/conf-available/custom-security.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: apache_custom_security_conf | length > 0
+
+    - name: Deploy standard apache security conf template
+      template:
+        src: apache-security.conf.j2
+        dest: /etc/apache2/conf-available/custom-security.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: apache_custom_security_conf | length == 0
+  notify: restart apache
+
+- name: Enable custom security conf
+  command: a2enconf custom-security
+  args:
+    warn: false
+  notify: restart apache
+
+- name: Ensure default site is enabled
+  command: a2ensite 000-default.conf
+  args:
+    warn: false
+  notify: restart apache
+
+- name: Ensure apache service is running and enabled
+  service:
+    name: "{{ apache_service_name }}"
+    state: started
+    enabled: yes

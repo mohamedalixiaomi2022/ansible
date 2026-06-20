@@ -1,0 +1,17 @@
+---
+php_install: true
+php_version: "8.2"
+php_handler: "fpm"
+php_packages:
+  - "php{{ php_version }}"
+  - "php{{ php_version }}-cli"
+  - "php{{ php_version }}-gd"
+  - "php{{ php_version }}-mbstring"
+  - "php{{ php_version }}-xml"
+  - "php{{ php_version }}-curl"
+  - "php{{ php_version }}-zip"
+  - "php{{ php_version }}-mysql"
+php_modphp_pkg: "libapache2-mod-php{{ php_version }}"
+php_custom_ini: ""
+php_custom_fpm_conf: ""
+php_ini_overrides: {}

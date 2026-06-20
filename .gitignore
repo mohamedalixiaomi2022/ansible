@@ -1,0 +1,13 @@
+# OS / editor
+.vagrant/
+*.retry
+*.pyc
+__pycache__/
+
+# Ansible
+*.retry
+.vault-password
+
+# Archives
+*.tar.gz
+*.b64

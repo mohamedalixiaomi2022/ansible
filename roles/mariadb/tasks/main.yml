@@ -1,0 +1,178 @@
+---
+- name: "Skip mariadb role when not requested"
+  meta: end_play
+  when: not mariadb_install
+
+- name: Ensure apt-transport-https is present
+  apt:
+    name: apt-transport-https
+    state: present
+    update_cache: yes
+
+- name: Add MariaDB APT key
+  apt_key:
+    url: "https://mariadb.org/mariadb_release_signing_key.asc"
+    state: present
+
+- name: Add MariaDB repository
+  apt_repository:
+    repo: "deb [arch=amd64] http://downloads.mariadb.com/mariadb/{{ mariadb_version }}/repo/ubuntu {{ mariadb_apt_codename }} main"
+    state: present
+  notify: apt_update_mariadb
+
+- name: apt update for mariadb
+  apt:
+    update_cache: yes
+  when: false
+  listen: apt_update_mariadb
+
+- name: Install mariadb-server
+  apt:
+    name: "mariadb-server-{{ mariadb_version.split('.')[0] }}"
+    state: present
+    update_cache: yes
+  notify: restart mariadb
+
+- name: Stop mariadb before relocating datadir
+  service:
+    name: mariadb
+    state: stopped
+  ignore_errors: yes
+
+- name: Ensure mariadb data directory exists
+  file:
+    path: "{{ mariadb_data_dir }}"
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: "0755"
+
+- name: Determine if old datadir exists
+  stat:
+    path: /var/lib/mysql
+  register: old_datadir_stat
+
+- name: Determine if new datadir has content
+  find:
+    paths: "{{ mariadb_data_dir }}"
+    file_type: any
+    recurse: yes
+  register: new_datadir_find
+
+- name: Rsync existing data to new datadir (if old exists and new is empty)
+  command: >
+    rsync -aHAX --numeric-ids --delete /var/lib/mysql/ {{ mariadb_data_dir }}/
+  when:
+    - old_datadir_stat.stat.exists
+    - new_datadir_find.matched == 0
+  args:
+    warn: false
+  register: rsync_result
+  changed_when: rsync_result.rc == 0 and rsync_result.stdout is defined
+
+- name: Create marker file after move
+  file:
+    path: "{{ mariadb_data_dir }}/.moved_by_ansible"
+    state: touch
+    owner: mysql
+    group: mysql
+  when:
+    - old_datadir_stat.stat.exists
+    - new_datadir_find.matched == 0
+
+- name: Ensure correct ownership on mariadb data dir
+  file:
+    path: "{{ mariadb_data_dir }}"
+    state: directory
+    recurse: yes
+    owner: mysql
+    group: mysql
+    mode: "0755"
+
+- name: Deploy my.cnf (custom override if set)
+  block:
+    - name: Copy custom my.cnf if provided
+      copy:
+        src: "{{ mariadb_custom_cnf }}"
+        dest: /etc/mysql/my.cnf
+        owner: root
+        group: root
+        mode: "0644"
+      when: mariadb_custom_cnf | length > 0
+
+    - name: Render my.cnf template
+      template:
+        src: my.cnf.j2
+        dest: /etc/mysql/my.cnf
+        owner: root
+        group: root
+        mode: "0644"
+      when: mariadb_custom_cnf | length == 0
+  notify: restart mariadb
+
+- name: Ensure AppArmor local profile directory exists
+  file:
+    path: /etc/apparmor.d/local
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Add AppArmor lines to allow new mariadb datadir
+  blockinfile:
+    path: /etc/apparmor.d/local/usr.sbin.mysqld
+    create: yes
+    block: | 
+      # Allow MariaDB data dir managed by Ansible
+      {{ mariadb_data_dir }}/ r,
+      {{ mariadb_data_dir }}/** rwk,
+  notify: reload apparmor
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Start mariadb
+  service:
+    name: mariadb
+    state: started
+    enabled: yes
+
+- name: Wait for mariadb socket
+  wait_for:
+    path: /var/run/mysqld/mysqld.sock
+    timeout: 30
+
+- name: Generate SQL to run for secure hardening
+  set_fact:
+    mariadb_secure_sql: |
+      DELETE FROM mysql.user WHERE User='';
+      DROP DATABASE IF EXISTS test;
+      DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';
+      FLUSH PRIVILEGES;
+      {{ "ALTER USER 'root'@'localhost' IDENTIFIED BY '" + mariadb_root_password + "';" if mariadb_root_password | length > 0 else "" }}
+
+- name: Execute secure SQL
+  community.mysql.mysql_query:
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    query: "{{ mariadb_secure_sql }}"
+  when: mariadb_secure_hardening
+  become: true
+
+- name: Create configured MariaDB databases
+  community.mysql.mysql_db:
+    name: "{{ item.name }}"
+    state: present
+    login_user: root
+    login_password: "{{ mariadb_root_password | default(omit) }}"
+  loop: "{{ mariadb_databases }}"
+  when: mariadb_databases | length > 0
+
+- name: Create configured MariaDB users
+  community.mysql.mysql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+    priv: "{{ item.priv | default('*.*:ALL') }}"
+    host: "{{ item.host | default('localhost') }}"
+    state: present
+    login_user: root
+    login_password: "{{ mariadb_root_password | default(omit) }}"
+  loop: "{{ mariadb_users }}"
+  when: mariadb_users | length > 0

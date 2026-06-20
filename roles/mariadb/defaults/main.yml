@@ -1,0 +1,11 @@
+---
+mariadb_install: true
+mariadb_version: "12.3"
+mariadb_data_dir: "/srv/mysql"
+mariadb_apt_codename: "{{ ansible_distribution_release }}"
+mariadb_root_password: ""
+mariadb_bind_address: "127.0.0.1"
+mariadb_custom_cnf: ""
+mariadb_secure_hardening: true
+mariadb_databases: []
+mariadb_users: []

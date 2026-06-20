@@ -1,0 +1,6 @@
+---
+apache_install: true
+apache_pkg: apache2
+apache_service_name: apache2
+apache_php_handler: "{{ php_handler | default('fpm') }}"
+apache_custom_security_conf: ""

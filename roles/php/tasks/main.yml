@@ -1,0 +1,79 @@
+---
+- name: "Skip php role when not requested"
+  meta: end_play
+  when: not php_install
+
+- name: Ensure software-properties-common is present (for add-apt-repository)
+  apt:
+    name: software-properties-common
+    state: present
+    update_cache: yes
+
+- name: Add Ondrej Sury PHP PPA
+  apt_repository:
+    repo: ppa:ondrej/php
+    state: present
+  notify: apt_update_for_php
+
+- name: apt update for PHP
+  apt:
+    update_cache: yes
+  when: false
+  listen: apt_update_for_php
+
+- name: Install PHP packages
+  apt:
+    name: "{{ (php_packages if php_handler == 'fpm' else (php_packages + [php_modphp_pkg])) | unique }}"
+    state: present
+    update_cache: yes
+  notify: restart php-fpm
+
+- name: If using php-fpm, ensure service is enabled and running
+  service:
+    name: "php{{ php_version }}-fpm"
+    state: started
+    enabled: yes
+  when: php_handler == 'fpm'
+
+- name: Deploy php.ini (use custom if provided)
+  block:
+    - name: Copy custom php.ini if present
+      copy:
+        src: "{{ php_custom_ini }}"
+        dest: "/etc/php/{{ php_version }}/{{ 'fpm' if php_handler == 'fpm' else 'apache2' }}/php.ini"
+        owner: root
+        group: root
+        mode: "0644"
+      when: php_custom_ini | length > 0
+
+    - name: Render php.ini template
+      template:
+        src: php.ini.j2
+        dest: "/etc/php/{{ php_version }}/{{ 'fpm' if php_handler == 'fpm' else 'apache2' }}/php.ini"
+        owner: root
+        group: root
+        mode: "0644"
+      when: php_custom_ini | length == 0
+  notify: restart php-fpm
+
+- name: Deploy php-fpm www.conf (only for fpm handler; allow custom)
+  when: php_handler == 'fpm'
+  block:
+    - name: Use custom php-fpm conf if set
+      copy:
+        src: "{{ php_custom_fpm_conf }}"
+        dest: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+        owner: root
+        group: root
+        mode: "0644"
+      when: php_custom_fpm_conf | length > 0
+
+    - name: Render php-fpm pool config template
+      template:
+        src: php-fpm.conf.j2
+        dest: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+        owner: root
+        group: root
+        mode: "0644"
+      when: php_custom_fpm_conf | length == 0
+  notify: restart php-fpm

@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  author: "generated"
+  description: "Install PHP from Ondrej Sury PPA and secure configuration"
+  license: MIT
+  min_ansible_version: 2.14
+  dependencies: []

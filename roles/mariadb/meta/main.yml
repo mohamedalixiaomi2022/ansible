@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  author: "generated"
+  description: "Install MariaDB and move datadir to /srv/mysql with AppArmor adjustments"
+  license: MIT
+  min_ansible_version: 2.14
